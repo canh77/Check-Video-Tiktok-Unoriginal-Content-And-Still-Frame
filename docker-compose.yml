@@ -1,0 +1,10 @@
+services:
+  precheck:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      MAX_UPLOAD_MB: "500"
+      RESULT_TTL_MINUTES: "60"
+      CONCURRENCY: "2"
+    restart: unless-stopped

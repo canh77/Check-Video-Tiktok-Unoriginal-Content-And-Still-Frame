@@ -1,0 +1,18 @@
+{
+  "name": "tiktok-precheck",
+  "version": "1.0.0",
+  "description": "Kiểm tra video TikTok Shop trước khi đăng: Still Frame (ffmpeg) + checklist Unoriginal Content",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.3.0",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "multer": "^2.5.0"
+  }
+}

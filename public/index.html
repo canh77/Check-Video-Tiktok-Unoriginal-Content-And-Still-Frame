@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TikTok Pre-check: Still Frame</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#111; --muted:#666; --line:#e3e5e8; --accent:#fe2c55;
+          --pass:#16a34a; --warn:#d97706; --fail:#dc2626; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:880px; margin:0 auto; padding:24px 16px 60px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+  .drop { border:2px dashed #c8ccd2; border-radius:12px; padding:36px 16px; text-align:center; cursor:pointer; transition:.15s; }
+  .drop.over { border-color:var(--accent); background:#fff5f7; }
+  .drop input { display:none; }
+  .btn { display:inline-block; background:var(--accent); color:#fff; border:0; border-radius:8px; padding:12px 22px; font-size:16px; font-weight:600; cursor:pointer; margin-top:14px; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .hint { color:var(--muted); font-size:13px; margin-top:8px; }
+  .status { margin-top:14px; font-size:15px; }
+  .bar { height:8px; background:#eee; border-radius:4px; overflow:hidden; margin-top:8px; }
+  .bar > i { display:block; height:100%; width:0; background:var(--accent); transition:width .2s; }
+  .verdict { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .badge { font-weight:800; font-size:20px; padding:8px 16px; border-radius:10px; color:#fff; }
+  .badge.PASS { background:var(--pass); } .badge.WARN { background:var(--warn); } .badge.FAIL { background:var(--fail); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-top:16px; }
+  .stat { background:#fafafa; border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .stat b { display:block; font-size:20px; } .stat span { color:var(--muted); font-size:13px; }
+  .timeline { position:relative; height:26px; background:#d1fae5; border-radius:6px; margin-top:16px; overflow:hidden; }
+  .timeline i { position:absolute; top:0; bottom:0; background:var(--fail); }
+  .timeline-labels { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:4px; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); }
+  .sheets img { width:100%; border:1px solid var(--line); border-radius:8px; margin-top:10px; }
+  .check label { display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-bottom:1px solid var(--line); cursor:pointer; }
+  .check input { margin-top:3px; }
+  .error { color:var(--fail); }
+  a { color:#0a66c2; }
+  h2 { font-size:18px; margin:0 0 8px; }
+  .hidden { display:none; }
+  ol li { margin-bottom:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Kiểm tra video trước khi đăng TikTok Shop</h1>
+  <p class="sub">Phát hiện đoạn <b>Still Frame</b> (khung hình đứng yên) bằng ffmpeg, kèm checklist <b>Unoriginal Content</b>.</p>
+
+  <div class="card">
+    <form id="form">
+      <label class="drop" id="drop">
+        <input type="file" id="file" name="video" accept="video/*,.mp4,.mov,.m4v,.webm,.mkv">
+        <div id="dropText">Kéo thả video vào đây hoặc bấm để chọn</div>
+        <div class="hint">mp4, mov, webm… Tối đa 500MB. Video được xoá khỏi máy chủ ngay sau khi phân tích.</div>
+      </label>
+      <button class="btn" id="btn" type="submit" disabled>Kiểm tra</button>
+      <div class="status" id="status"></div>
+      <div class="bar hidden" id="bar"><i id="barFill"></i></div>
+    </form>
+  </div>
+
+  <div class="card hidden" id="result">
+    <div class="verdict">
+      <span class="badge" id="badge"></span>
+      <div id="verdictText"></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="sDuration"></b><span>Thời lượng</span></div>
+      <div class="stat"><b id="sFrozen"></b><span>Tổng thời gian đứng yên</span></div>
+      <div class="stat"><b id="sLongest"></b><span>Đoạn đứng yên dài nhất</span></div>
+      <div class="stat"><b id="sCount"></b><span>Số đoạn đứng yên</span></div>
+    </div>
+    <div class="timeline" id="timeline"></div>
+    <div class="timeline-labels"><span>0:00</span><span id="tlEnd"></span></div>
+    <div id="segWrap"></div>
+    <h2 style="margin-top:20px">Khung hình theo thời gian</h2>
+    <p class="hint">Mỗi ô là 1 khung hình kèm mốc thời gian. Các ô giống hệt nhau liên tiếp là đoạn TikTok dễ flag.</p>
+    <div class="sheets" id="sheets"></div>
+  </div>
+
+  <div class="card">
+    <h2>Checklist Unoriginal Content (tự kiểm tra)</h2>
+    <p class="hint">Lỗi này không kiểm tra offline được vì TikTok so với kho video nội bộ. Tick đủ các mục dưới trước khi đăng.</p>
+    <div class="check">
+      <label><input type="checkbox"> Video này <b>chưa từng đăng</b> trên TikTok (kể cả tài khoản khác, kể cả bản ghi LIVE).</label>
+      <label><input type="checkbox"> Không cắt / stitch lại review của người khác mà không có bình luận mới.</label>
+      <label><input type="checkbox"> Không chỉ thêm watermark hoặc logo lên clip cũ.</label>
+      <label><input type="checkbox"> Không có watermark app khác (CapCut, Instagram, YouTube…).</label>
+      <label><input type="checkbox"> Có mặt người hoặc giọng nói riêng, không phải stock footage thuần.</label>
+      <label><input type="checkbox"> Script và cảnh quay là mới, không dùng lại từ video trước.</label>
+      <label><input type="checkbox"> Nhạc dùng sound trong TikTok hoặc nhạc không bản quyền.</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Bước cuối: Video Pre-Check Tool của TikTok</h2>
+    <p>Sau khi video pass ở đây, chạy thêm tool chính chủ (miễn phí, khoảng 5 lượt/ngày, kết quả sau ~10 phút):</p>
+    <ol>
+      <li><b>Seller Center:</b> LIVE &amp; Video → Create Content → Quality Check.</li>
+      <li><b>App TikTok:</b> Profile → TikTok Studio → TikTok Shop for Creator → TikTok Shop toolkit → Video pre-check → Check now.</li>
+    </ol>
+    <p class="hint"><a href="https://seller-us.tiktok.com/university/essay?knowledge_id=6884399812937515&lang=en" target="_blank" rel="noopener">Hướng dẫn chính thức của TikTok</a> ·
+    <a href="https://seller-us.tiktok.com/university/essay?knowledge_id=4984474064766737&lang=en" target="_blank" rel="noopener">Chính sách Still Frame / Unoriginal Content</a></p>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const drop = $('drop'), fileInput = $('file'), btn = $('btn'), status = $('status');
+let file = null;
+
+function setFile(f) {
+  file = f;
+  $('dropText').textContent = f ? `${f.name} (${(f.size/1048576).toFixed(1)} MB)` : 'Kéo thả video vào đây hoặc bấm để chọn';
+  btn.disabled = !f;
+}
+fileInput.addEventListener('change', () => setFile(fileInput.files[0] || null));
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) setFile(f); });
+
+const fmt = (s) => `${Math.floor(s/60)}:${(s%60).toFixed(1).padStart(4,'0')}`;
+const VERDICT = {
+  PASS: ['ĐẠT', 'Không có đoạn đứng yên ≥ 1 giây. Video có thể đăng (vẫn nên chạy Pre-Check của TikTok).'],
+  WARN: ['CẦN SỬA', 'Có đoạn đứng yên 1–2 giây hoặc tổng ≥ 10%. Nên cắt bớt hoặc thêm chuyển động trước khi đăng.'],
+  FAIL: ['KHÔNG ĐẠT', 'Có đoạn đứng yên ≥ 2 giây hoặc > 30% video. Rất dễ bị flag Still Frame. Cắt / quay lại các đoạn bên dưới.'],
+};
+
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!file) return;
+  btn.disabled = true; $('result').classList.add('hidden');
+  status.innerHTML = 'Đang tải lên…'; $('bar').classList.remove('hidden'); $('barFill').style.width = '0';
+  const fd = new FormData(); fd.append('video', file);
+  try {
+    const data = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/check');
+      xhr.upload.onprogress = (ev) => {
+        if (!ev.lengthComputable) return;
+        const p = Math.round(100 * ev.loaded / ev.total);
+        $('barFill').style.width = p + '%';
+        status.textContent = p < 100 ? `Đang tải lên… ${p}%` : 'Đang phân tích bằng ffmpeg, chờ chút…';
+      };
+      xhr.onload = () => {
+        let body; try { body = JSON.parse(xhr.responseText); } catch { body = { error: 'Phản hồi không hợp lệ' }; }
+        xhr.status === 200 ? resolve(body) : reject(new Error(body.error || `Lỗi ${xhr.status}`));
+      };
+      xhr.onerror = () => reject(new Error('Mất kết nối tới máy chủ'));
+      xhr.send(fd);
+    });
+    render(data);
+    status.textContent = '';
+  } catch (err) {
+    status.innerHTML = `<span class="error">${err.message}</span>`;
+  } finally {
+    btn.disabled = false; $('bar').classList.add('hidden');
+  }
+});
+
+function render(d) {
+  const [label, text] = VERDICT[d.verdict];
+  $('badge').className = 'badge ' + d.verdict; $('badge').textContent = label;
+  $('verdictText').innerHTML = `<b>${d.fileName}</b><br>${text}`;
+  $('sDuration').textContent = fmt(d.duration);
+  $('sFrozen').textContent = `${d.totalFrozen}s (${d.pct}%)`;
+  $('sLongest').textContent = `${d.longest}s`;
+  $('sCount').textContent = d.segments.length;
+  const tl = $('timeline'); tl.innerHTML = '';
+  for (const s of d.segments) {
+    const i = document.createElement('i');
+    i.style.left = (100 * s.start / d.duration) + '%';
+    i.style.width = Math.max(0.5, 100 * (s.end - s.start) / d.duration) + '%';
+    i.title = `${fmt(s.start)} → ${fmt(s.end)}`;
+    tl.appendChild(i);
+  }
+  $('tlEnd').textContent = fmt(d.duration);
+  $('segWrap').innerHTML = d.segments.length
+    ? `<table><tr><th>#</th><th>Bắt đầu</th><th>Kết thúc</th><th>Dài</th></tr>${d.segments.map((s, i) =>
+        `<tr><td>${i+1}</td><td>${fmt(s.start)}</td><td>${fmt(s.end)}</td><td>${(s.end - s.start).toFixed(2)}s</td></tr>`).join('')}</table>`
+    : '<p class="hint">Không phát hiện đoạn đứng yên nào ≥ 0.5 giây.</p>';
+  $('sheets').innerHTML = d.sheets.map(u => `<img src="${u}" loading="lazy" alt="contact sheet">`).join('');
+  $('result').classList.remove('hidden');
+  $('result').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
